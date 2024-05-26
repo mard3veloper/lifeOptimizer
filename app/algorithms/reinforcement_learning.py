@@ -1,5 +1,5 @@
 import random
-from optimization_algorithm import OptimizationAlgorithm
+from algorithms.optimization_algorithm import OptimizationAlgorithm
 import json
 import numpy as np
 

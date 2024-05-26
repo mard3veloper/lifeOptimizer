@@ -1,14 +1,16 @@
-import sys
-import json
 import os
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
-                             QPushButton, QTextEdit, QFormLayout, QComboBox, QListWidget, QMessageBox, QTabWidget, QListWidgetItem, QInputDialog, QSpinBox)
+import json
+from PyQt5.QtWidgets import (QMainWindow, QVBoxLayout, QLabel, QLineEdit, QTextEdit, QComboBox, QListWidget, QPushButton, QFormLayout, QHBoxLayout, QWidget, QTabWidget, QMessageBox, QSpinBox, QInputDialog, QListWidgetItem)
 from PyQt5.QtGui import QIntValidator
 from PyQt5.QtCore import Qt, QTimer
+# from .utils.validations import validate_numeric_input, validate_title
+from .utils.calculations import calculate_number_of_possible_states
+from .existing_problems import ExistingProblemsTab
 
 class ProblemDefinitionPage(QMainWindow):
-    def __init__(self, main_app):
+    def __init__(self, app):
         super().__init__()
+        self.app = app
         self.setWindowTitle("Problem Definition")
         self.setGeometry(100, 100, 800, 600)
         self.variables = []
@@ -23,17 +25,31 @@ class ProblemDefinitionPage(QMainWindow):
         create_problem_widget.setLayout(create_problem_layout)
         self.setup_problem_definition_tab(create_problem_layout)
 
-        list_problems_widget = QWidget()
-        list_problems_layout = QVBoxLayout()
-        list_problems_widget.setLayout(list_problems_layout)
-        self.problem_list = QListWidget()
-        list_problems_layout.addWidget(self.problem_list)
+        self.existing_problems_tab = ExistingProblemsTab(self)
 
         self.tabs.addTab(create_problem_widget, "Define Problem")
-        self.tabs.addTab(list_problems_widget, "Existing Problems")
+        self.tabs.addTab(self.existing_problems_tab, "Existing Problems")
+
+        # Connect the currentChanged signal to a method to refresh the existing problems tab
+        self.tabs.currentChanged.connect(self.on_tab_changed)
+        self.existing_problems_tab.problem_selected.connect(self.on_problem_selected)  # Connect the signal
+
+
+    def on_tab_changed(self, index):
+        # If the "Existing Problems" tab is selected, reload the problems
+        if self.tabs.tabText(index) == "Existing Problems":
+            self.existing_problems_tab.load_problems()
+
+    def on_problem_selected(self, filepath):
+        # Call the main app's method to start iterative optimization
+        problem_title = os.path.splitext(os.path.basename(filepath))[0].replace('_', ' ')
+        self.app.start_iterative_optimization(problem_title, filepath)
 
     def setup_problem_definition_tab(self, layout):
-        # Problem Title and Description
+
+        # Problem Entry Fields
+
+        # Problem Title entry
         title_layout = QFormLayout()
         self.title_entry = QLineEdit()
         title_layout.addRow(QLabel("Problem Title:"), self.title_entry)
@@ -41,9 +57,9 @@ class ProblemDefinitionPage(QMainWindow):
         self.title_error_label.setStyleSheet("color: red;")
         self.title_error_label.setVisible(False)
         title_layout.addRow(self.title_error_label)
-        self.title_entry.textChanged.connect(self.validate_title)  # Connect title entry to validation method
         layout.addLayout(title_layout)
-
+        
+        # Problem Description entry
         desc_layout = QFormLayout()
         self.desc_text_edit = QTextEdit()
         desc_layout.addRow(QLabel("Problem Description:"), self.desc_text_edit)
@@ -53,7 +69,7 @@ class ProblemDefinitionPage(QMainWindow):
         self.variable_display_layout = QVBoxLayout()
         layout.addLayout(self.variable_display_layout)
 
-        # Layout for adding variables
+        # Problem Variable Entry Fields
         var_layout = QHBoxLayout()
         var_layout.addWidget(QLabel("Variable Name:"))
         self.variable_entry = QLineEdit()
@@ -91,18 +107,14 @@ class ProblemDefinitionPage(QMainWindow):
         cat_layout.addLayout(cat_sub_layout)
         var_layout.addLayout(cat_layout)
 
-
-
         self.add_variable_button = QPushButton("Add Variable")
         self.add_variable_button.clicked.connect(self.add_variable)
         self.add_variable_button.setEnabled(False)  # Start with the button disabled
         var_layout.addWidget(self.add_variable_button)
-
         self.update_variable_type_ui()
-
         layout.addLayout(var_layout)
 
-        # Optimized Variable Entry
+        # Problem Optimized Variable Entry
         optimized_var_layout = QHBoxLayout()
         optimized_var_layout.addWidget(QLabel("Optimized Variable Name:"))
         self.optimized_variable_entry = QLineEdit()
@@ -131,14 +143,10 @@ class ProblemDefinitionPage(QMainWindow):
         self.algorithm_layout.addWidget(self.algorithm_combo)
         self.algorithm_layout.addWidget(self.objective_label)
         self.algorithm_layout.addWidget(self.objective_function_combo)
-
         layout.addLayout(self.algorithm_layout)
 
         # Initially hide algorithm selection and objective function
         self.hide_algorithm_options()
-
-        # Optimization Options setup
-        self.optimization_option_combo.currentIndexChanged.connect(self.update_optimization_ui)
 
         # Add 'Order Matters' Checkbox
         self.order_matters_combo = QComboBox()
@@ -152,15 +160,10 @@ class ProblemDefinitionPage(QMainWindow):
         self.num_vars_per_state_spinbox = QSpinBox()
         self.num_vars_per_state_spinbox.setRange(1, 100)  # Assuming a max of 100 variables
         self.num_vars_per_state_spinbox.setValue(len(self.variables))  # Default to total number of variables
-        self.num_vars_per_state_spinbox.valueChanged.connect(self.update_possible_states)
         num_vars_layout = QHBoxLayout()
         num_vars_layout.addWidget(QLabel("Number of variables per state:"))
         num_vars_layout.addWidget(self.num_vars_per_state_spinbox)
         layout.addLayout(num_vars_layout)
-
-        # Connect signals for recalculating possible states
-        self.order_matters_combo.currentIndexChanged.connect(self.update_possible_states)
-        self.num_vars_per_state_spinbox.textChanged.connect(self.update_possible_states)
 
         # Label and box for displaying the number of possible states
         self.states_label = QLabel("Number of Possible States: 0")
@@ -171,8 +174,6 @@ class ProblemDefinitionPage(QMainWindow):
         self.submit_button = QPushButton("Submit")
         self.submit_button.setEnabled(False)
         layout.addWidget(self.submit_button)
-        # self.submit_button.clicked.connect(self.submit_data)
-        self.submit_button.clicked.connect(self.gather_data)
 
         self.success_message_label = QLabel("")
         self.success_message_label.setStyleSheet("color: green;")
@@ -180,26 +181,29 @@ class ProblemDefinitionPage(QMainWindow):
         layout.addWidget(self.success_message_label)
 
         # Connect signals for validating inputs
-        self.categories_list.itemChanged.connect(self.on_category_changed)
-        self.categories_list.itemChanged.connect(self.validate_variable_inputs)
-        self.title_entry.textChanged.connect(self.validate_inputs)
         self.title_entry.textChanged.connect(self.validate_title)
+        self.title_entry.textChanged.connect(self.validate_inputs)
+        self.categories_list.itemChanged.connect(self.validate_variable_inputs)
+        self.categories_list.model().rowsRemoved.connect(self.validate_variable_inputs)
+        self.categories_list.model().rowsInserted.connect(self.validate_variable_inputs)
         self.optimized_variable_entry.textChanged.connect(self.validate_inputs)
         self.optimization_option_combo.currentIndexChanged.connect(self.validate_inputs)
+        self.optimization_option_combo.currentIndexChanged.connect(self.update_optimization_ui)
         self.algorithm_combo.currentIndexChanged.connect(self.validate_inputs)
         self.type_combo.currentIndexChanged.connect(self.update_variable_type_ui)
         self.type_combo.currentIndexChanged.connect(self.validate_variable_inputs)
+        self.num_vars_per_state_spinbox.valueChanged.connect(self.update_possible_states)
+        self.num_vars_per_state_spinbox.textChanged.connect(self.update_possible_states)
         self.variable_entry.textChanged.connect(self.validate_variable_inputs)
+        self.order_matters_combo.currentIndexChanged.connect(self.update_possible_states)
         self.min_value_entry.textChanged.connect(self.validate_variable_inputs)
         self.max_value_entry.textChanged.connect(self.validate_variable_inputs)
-        self.categories_list.model().rowsInserted.connect(self.validate_variable_inputs)
-        self.categories_list.model().rowsRemoved.connect(self.validate_variable_inputs)
+        self.submit_button.clicked.connect(self.gather_data)
 
     def update_possible_states(self):
-        import math
-        from itertools import combinations
-
         num_vars = self.num_vars_per_state_spinbox.value()  # Get the value from the QSpinBox
+
+        # Ensure the value is within the range of available variables
         if num_vars > len(self.variables):
             num_vars = len(self.variables)
         self.num_vars_per_state_spinbox.setValue(num_vars)  # Update the QSpinBox value if necessary
@@ -207,27 +211,11 @@ class ProblemDefinitionPage(QMainWindow):
         if num_vars <= 0 or not self.variables:
             self.states_label.setText("Number of Possible States: 0")
             return
-
-        total_states = 0
+    
         # Calculate states considering combinations of variables up to the specified number per state
-        for variable_combination in combinations(self.variables, num_vars):
-            # Calculate the product of possible values for each combination
-            states_for_combination = 1
-            for var in variable_combination:
-                states_for_combination *= len(var['possible_values'])
-            
-            # If the order of variables matters, multiply by factorial of num_vars
-            if self.order_matters_combo.currentText() == "Yes":
-                states_for_combination *= math.factorial(num_vars)
-
-            total_states += states_for_combination
+        total_states = calculate_number_of_possible_states(self.variables, num_vars, self.order_matters_combo.currentText() == "Yes")
 
         self.states_label.setText(f"Number of Possible States: {total_states}")
-
-
-    def on_category_changed(self, item):
-        # This method is called whenever a list item is edited
-        return
 
     def update_optimization_ui(self):
         # Show or hide Algorithm and Objective based on selected optimization type
@@ -349,15 +337,6 @@ class ProblemDefinitionPage(QMainWindow):
             self.num_vars_per_state_spinbox.setValue(len(self.variables))  # Default to total number of variables
             self.update_possible_states()
             
-    def validate_numeric_input(self):
-        if self.type_combo.currentText() == "Numerical":
-            min_val = self.min_value_entry.text()
-            max_val = self.max_value_entry.text()
-            if min_val.isdigit() and max_val.isdigit() and int(min_val) < int(max_val):
-                return True
-            QMessageBox.warning(self, "Input Error", "Minimum value must be less than maximum value and both must be whole numbers.")
-            return False
-        return True
 
     def display_variable(self, variable_details):
         display_widget = QWidget()
@@ -467,6 +446,33 @@ class ProblemDefinitionPage(QMainWindow):
         self.update_possible_states()  # Update the possible states count
         self.validate_inputs()  # Revalidate all inputs
 
+    def delete_variable(self, variable_details, widget):
+        self.variables.remove(variable_details)
+        widget.setParent(None)
+        # Update order of remaining variables
+        if self.order_matters_combo.currentText() == "Yes":
+            for index, variable in enumerate(self.variables):
+                variable['order'] = index + 1
+        self.num_vars_per_state_spinbox.setValue(len(self.variables))  # Update number of variables per state to new total
+        self.update_possible_states()
+        self.validate_inputs()
+
+    def clear_variable_inputs(self):
+        self.variable_entry.clear()
+        self.type_combo.setCurrentIndex(0)
+        self.min_value_entry.clear()
+        self.max_value_entry.clear()
+        self.categories_list.clear()
+        self.add_variable_button.setText("Add Variable")
+        self.add_variable_button.disconnect()
+        self.add_variable_button.clicked.connect(self.add_variable)
+        self.update_possible_states()
+        self.validate_inputs()
+
+    def update_initial_value(self, variable_details, value):
+        variable_details['current_value'] = type(variable_details['possible_values'][0])(value)
+        self.update_possible_states()
+
     def redisplay_all_variables(self):
         # Clear the current display
         while self.variable_display_layout.count():
@@ -481,6 +487,16 @@ class ProblemDefinitionPage(QMainWindow):
     def toggle_widget_visibility(self, widget, visible=True):
         widget.setVisible(visible)
 
+    def validate_numeric_input(self):
+        if self.type_combo.currentText() == "Numerical":
+            min_val = self.min_value_entry.text()
+            max_val = self.max_value_entry.text()
+            if min_val.isdigit() and max_val.isdigit() and int(min_val) < int(max_val):
+                return True
+            QMessageBox.warning(self, "Input Error", "Minimum value must be less than maximum value and both must be whole numbers.")
+            return False
+        return True
+
     def validate_title(self):
         title = self.title_entry.text().strip()
         filename = os.path.join("problems", f"{title.replace(' ', '_')}.json")
@@ -491,6 +507,36 @@ class ProblemDefinitionPage(QMainWindow):
         self.title_error_label.setVisible(False)
         return True
 
+    def validate_variable_inputs(self):
+        var_name = self.variable_entry.text().strip()
+        var_type = self.type_combo.currentText()
+
+        if var_type == "Boolean":
+            is_valid = bool(var_name and var_type != "Select Type")
+        elif var_type == "Numerical":
+            min_val = self.min_value_entry.text()
+            max_val = self.max_value_entry.text()
+            is_valid = bool(var_name and min_val.isdigit() and max_val.isdigit() and int(min_val) < int(max_val))
+        elif var_type == "Categorical":
+            is_valid = bool(var_name and self.categories_list.count() > 0)
+        else:
+            is_valid = False
+
+        self.add_variable_button.setEnabled(is_valid)
+
+    def validate_inputs(self):
+        title_filled = self.title_entry.text().strip() != "" and self.validate_title()
+        has_variables = len(self.variables) > 0
+        optimized_var_filled = self.optimized_variable_entry.text().strip() != ""
+        optimization_selected = self.optimization_option_combo.currentIndex() != 0
+
+        if self.optimization_option_combo.currentText() == "Automatic Optimization":
+            algorithm_selected = self.algorithm_combo.currentIndex() != 0
+            all_conditions_met = title_filled and has_variables and optimized_var_filled and optimization_selected and algorithm_selected
+        else:
+            all_conditions_met = title_filled and has_variables and optimized_var_filled and optimization_selected
+
+        self.submit_button.setEnabled(all_conditions_met)
 
     def gather_data(self):
         problem_data = {
@@ -540,33 +586,6 @@ class ProblemDefinitionPage(QMainWindow):
         # Hide the success message after 5 seconds
         QTimer.singleShot(5000, self.hide_success_message)
 
-    def delete_variable(self, variable_details, widget):
-        self.variables.remove(variable_details)
-        widget.setParent(None)
-        # Update order of remaining variables
-        if self.order_matters_combo.currentText() == "Yes":
-            for index, variable in enumerate(self.variables):
-                variable['order'] = index + 1
-        self.num_vars_per_state_spinbox.setValue(len(self.variables))  # Update number of variables per state to new total
-        self.update_possible_states()
-        self.validate_inputs()
-
-    def update_initial_value(self, variable_details, value):
-        variable_details['current_value'] = type(variable_details['possible_values'][0])(value)
-        self.update_possible_states()
-
-    def clear_variable_inputs(self):
-        self.variable_entry.clear()
-        self.type_combo.setCurrentIndex(0)
-        self.min_value_entry.clear()
-        self.max_value_entry.clear()
-        self.categories_list.clear()
-        self.add_variable_button.setText("Add Variable")
-        self.add_variable_button.disconnect()
-        self.add_variable_button.clicked.connect(self.add_variable)
-        self.update_possible_states()
-        self.validate_inputs()
-
     def clear_form(self):
         self.title_entry.clear()
         self.desc_text_edit.clear()
@@ -591,41 +610,3 @@ class ProblemDefinitionPage(QMainWindow):
 
     def hide_success_message(self):
         self.success_message_label.setVisible(False)
-
-
-    def validate_variable_inputs(self):
-        var_name = self.variable_entry.text().strip()
-        var_type = self.type_combo.currentText()
-
-        if var_type == "Boolean":
-            is_valid = bool(var_name and var_type != "Select Type")
-        elif var_type == "Numerical":
-            min_val = self.min_value_entry.text()
-            max_val = self.max_value_entry.text()
-            is_valid = bool(var_name and min_val.isdigit() and max_val.isdigit() and int(min_val) < int(max_val))
-        elif var_type == "Categorical":
-            is_valid = bool(var_name and self.categories_list.count() > 0)
-        else:
-            is_valid = False
-
-        self.add_variable_button.setEnabled(is_valid)
-
-    def validate_inputs(self):
-        title_filled = self.title_entry.text().strip() != "" and self.validate_title()
-        has_variables = len(self.variables) > 0
-        optimized_var_filled = self.optimized_variable_entry.text().strip() != ""
-        optimization_selected = self.optimization_option_combo.currentIndex() != 0
-
-        if self.optimization_option_combo.currentText() == "Automatic Optimization":
-            algorithm_selected = self.algorithm_combo.currentIndex() != 0
-            all_conditions_met = title_filled and has_variables and optimized_var_filled and optimization_selected and algorithm_selected
-        else:
-            all_conditions_met = title_filled and has_variables and optimized_var_filled and optimization_selected
-
-        self.submit_button.setEnabled(all_conditions_met)
-
-# if __name__ == "__main__":
-#     app = QApplication(sys.argv)
-#     ex = ProblemDefinitionPage(None)
-#     ex.show()
-#     sys.exit(app.exec_())

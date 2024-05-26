@@ -3,7 +3,7 @@ import random
 import matplotlib.pyplot as plt
 from reinforcement_learning import ReinforcementLearning
 from hill_climbing import HillClimbing
-from genetic_algo import GeneticAlgo
+from algorythims.genetic_algo import GeneticAlgo
 from random_comparison import RandomComparison
 from test_generator import TestGenerator
 

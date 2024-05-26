@@ -1,6 +1,6 @@
 import random
 import json
-from optimization_algorithm import OptimizationAlgorithm
+from algorithms.optimization_algorithm import OptimizationAlgorithm
 
 class HillClimbing(OptimizationAlgorithm):
     """
