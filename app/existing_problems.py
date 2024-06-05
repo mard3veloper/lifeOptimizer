@@ -35,9 +35,9 @@ class ExistingProblemsTab(QWidget):
                     problem_data = json.load(file)
                     if problem_data:
                         problem_title = problem_data[-1]['title']
-                        self.add_problem_item(problem_title, filepath)
+                        self.add_problem_item(problem_title, filepath, problem_data)
 
-    def add_problem_item(self, title, filepath):
+    def add_problem_item(self, title, filepath, problem_data):
         item_widget = QWidget()
         item_layout = QHBoxLayout(item_widget)
         item_layout.setContentsMargins(0, 0, 0, 0)
@@ -47,6 +47,12 @@ class ExistingProblemsTab(QWidget):
 
         current_state_button = QPushButton("Current State")
         current_state_button.clicked.connect(lambda: self.view_current_state(filepath))
+
+        # Check if the problem is fully explored
+        if problem_data and problem_data[-1].get('fully_explored'):
+            current_state_button.setEnabled(False)
+            current_state_button.setText("Fully Explored")
+
         item_layout.addWidget(current_state_button)
 
         edit_button = QPushButton("Edit Problem")

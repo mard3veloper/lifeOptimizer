@@ -319,7 +319,7 @@ class ProblemDefinitionPage(QMainWindow):
             order = len(self.variables) + 1 if self.order_matters_combo.currentText() == "Yes" else 0
             categories = [self.categories_list.itemWidget(self.categories_list.item(i)).layout().itemAt(0).widget().text() for i in range(self.categories_list.count())] if var_type == "Categorical" else []
             possible_values = categories if var_type == "Categorical" else ([True, False] if var_type == "Boolean" else list(range(int(self.min_value_entry.text()), int(self.max_value_entry.text()) + 1)))
-            initial_value = categories[0] if categories else True if var_type == "Boolean" else int(self.min_value_entry.text())
+            initial_value = categories[0] if categories else (True if var_type == "Boolean" else int(self.min_value_entry.text()))
             variable_details = {
                 "name": var_name,
                 "type": var_type,
@@ -327,7 +327,8 @@ class ProblemDefinitionPage(QMainWindow):
                 "current_value": initial_value,
                 "order": order,
                 "lock_order": False,
-                "lock_value": False
+                "lock_value": False,
+                "impact_score": 0,
             }
             self.variables.append(variable_details)
             self.display_variable(variable_details)
@@ -336,6 +337,7 @@ class ProblemDefinitionPage(QMainWindow):
             self.num_vars_per_state_spinbox.setRange(1, len(self.variables))  # Update range of variables per state
             self.num_vars_per_state_spinbox.setValue(len(self.variables))  # Default to total number of variables
             self.update_possible_states()
+
             
 
     def display_variable(self, variable_details):
@@ -553,7 +555,8 @@ class ProblemDefinitionPage(QMainWindow):
             "order_matters": self.order_matters_combo.currentText(),
             "num_vars_per_state": self.num_vars_per_state_spinbox.value(),
             "iteration_count": 0,  # Initialize iteration count to zero
-            "calculated_states": self.states_label.text().split(": ")[1]  # Extract the number of possible states
+            "calculated_states": self.states_label.text().split(": ")[1],  # Extract the number of possible states
+            "fully_explored": False,  # Initialize local optimum to False
         }
         
         # Create the problems directory if it doesn't exist

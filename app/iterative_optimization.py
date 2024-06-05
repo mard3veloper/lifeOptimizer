@@ -6,6 +6,8 @@ from itertools import permutations
 from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox, QComboBox, QHBoxLayout
 from PyQt5.QtGui import QDoubleValidator
 from app.algorithms.random_comparison import RandomComparison
+from app.algorithms.hill_climbing import HillClimbingOptimization
+
 class IterativeOptimizationPage(QMainWindow):
     def __init__(self, app, problem_title, filename):
         super().__init__()
@@ -164,7 +166,7 @@ class IterativeOptimizationPage(QMainWindow):
             if var['type'] == 'Boolean':
                 var['current_value'] = self.variable_inputs[var['name']].currentText() == "True"
             else:
-                var['current_value'] = self.variable_inputs[var['name']].currentText()
+                var['current_value'] = self.convert_to_correct_type(self.variable_inputs[var['name']].currentText(), var['type'])
             var['lock_value'] = self.variable_inputs[f"{var['name']}_lock_value"].currentText() == "True"
             if self.current_iteration['order_matters'] == "Yes":
                 var['lock_order'] = self.variable_inputs[f"{var['name']}_lock_order"].currentText() == "True"
@@ -177,8 +179,24 @@ class IterativeOptimizationPage(QMainWindow):
             json.dump(self.data, file, indent=4)
 
         # Call the optimization algorithm to get the next set of variables
-        optimizer = RandomComparison()
-        new_params = optimizer.next_parameters(self.filename)
+        optimizer = HillClimbingOptimization()
+        new_params = optimizer.next_parameters(self.filename, self.problem_title)
+
+        # Check if all states are explored
+        if new_params == "All possible states explored.":
+            QMessageBox.information(self, "Optimization Complete", "All possible states have been explored.")
+            
+            # Mark the problem as fully explored
+            self.current_iteration['fully_explored'] = True
+            with open(self.filename, 'w') as file:
+                json.dump(self.data, file, indent=4)
+            
+            # # Update the existing problems tab
+            # if hasattr(self.app, 'existing_problems_tab'):
+            #     self.app.existing_problems_tab.load_problems()
+            self.app.start_problem_definition()
+            self.close()
+            return
 
         # Create a new iteration object with the new parameters
         new_iteration = {
@@ -189,10 +207,11 @@ class IterativeOptimizationPage(QMainWindow):
                     "name": var['name'],
                     "type": var['type'],
                     "possible_values": var['possible_values'],
-                    "current_value": new_params[var['name']],
+                    "current_value": self.convert_to_correct_type(new_params[var['name']], var['type']),
                     "order": var['order'],
                     "lock_order": var['lock_order'],
-                    "lock_value": var['lock_value']
+                    "lock_value": var['lock_value'],
+                    "impact_score": var['impact_score'],
                 }
                 for var in self.current_iteration['variables']
             ],
@@ -206,7 +225,8 @@ class IterativeOptimizationPage(QMainWindow):
             "order_matters": self.current_iteration['order_matters'],
             "num_vars_per_state": self.current_iteration['num_vars_per_state'],
             "iteration_count": self.current_iteration['iteration_count'] + 1,
-            "calculated_states": self.calculate_possible_states()
+            "calculated_states": self.calculate_possible_states(),
+            "fully_explored": False,
         }
 
         # Append the new iteration to the list of iterations
@@ -218,3 +238,22 @@ class IterativeOptimizationPage(QMainWindow):
 
         QMessageBox.information(self, "Data Submitted", "Data has been updated successfully.")
         self.app.start_problem_definition()
+
+    def convert_to_correct_type(self, value, var_type):
+        if var_type == 'Boolean':
+            return value == 'True' if isinstance(value, str) else bool(value)
+        elif var_type == 'Numerical':
+            return int(value)
+        elif var_type == 'Categorical':
+            return str(value)
+        return value
+
+    def convert_to_correct_type(self, value, var_type):
+        if var_type == 'Boolean':
+            return value == 'True' if isinstance(value, str) else bool(value)
+        elif var_type == 'Numerical':
+            return int(value)
+        elif var_type == 'Categorical':
+            return str(value)
+        return value
+
